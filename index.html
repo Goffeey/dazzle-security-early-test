@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>Dazzle Security — Early test version</title>
+<style>
+  :root { --bg: #0f1419; --card: #1a2332; --accent: #00d4aa; --text: #e7ecf3; --muted: #8b9bb4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  header { padding: 2rem 1.5rem 1rem; text-align: center; border-bottom: 1px solid #2a3548; }
+  h1 { margin: 0 0 .25rem; font-size: 1.8rem; }
+  .slogan { color: var(--accent); font-weight: 600; font-size: 1.15rem; margin: .5rem 0; }
+  .sub { color: var(--muted); max-width: 680px; margin: 0 auto; }
+  main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+  .card { background: var(--card); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem; border: 1px solid #2a3548; }
+  h2 { margin-top: 0; font-size: 1.25rem; }
+  button, input[type=text] { font: inherit; padding: .6rem 1rem; border-radius: 8px; border: 1px solid #3a4a62; background: #243044; color: var(--text); }
+  button.primary { background: var(--accent); color: #0f1419; border: none; font-weight: 600; cursor: pointer; }
+  button.primary:hover { filter: brightness(1.1); }
+  #canvasWrap { position: relative; margin: 1rem 0; background: #000; border-radius: 8px; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
+  canvas { max-width: 100%; height: auto; display: block; }
+  .status { padding: .75rem; border-radius: 8px; margin: .75rem 0; font-weight: 500; }
+  .ok { background: #0d3b2e; color: #7dffc3; }
+  .bad { background: #3b1515; color: #ff9b9b; }
+  .info { background: #1e2a40; color: #a8c4ff; }
+  .limits { background: #2a2416; color: #ffd97a; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  .small { font-size: .9rem; color: var(--muted); }
+  footer { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: .85rem; }
+  .token-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .75rem 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dazzle Security</h1>
+  <p class="slogan">Make casual and automated copying harder.<br>Help keep a better record if it still happens.</p>
+  <p class="sub">Early test version. Free basic demo. No false promises.</p>
+</header>
+
+<main>
+  <div class="limits">
+    <strong>Limits notice:</strong> Experimental. This does not stop screenshots, screen recording, or anyone who can access the image data directly. It is not legal protection. It only makes some casual and simple automated copying more difficult and can leave a visible mark on the canvas.
+  </div>
+
+  <section class="card">
+    <h2>What this early test version does</h2>
+    <ul>
+      <li>Draws a simple protected view only to a canvas (no normal image file on the page).</li>
+      <li>Shows a short visible code on the canvas when unlocked (demo only — the code is not saved or linked to anything yet).</li>
+      <li>Requires a local demo token in this tab before drawing the view.</li>
+      <li>Blocks the right-click menu on the canvas.</li>
+    </ul>
+    <p>The basic version is free to try. It collects nothing. No data is sent anywhere.</p>
+  </section>
+
+  <section class="card">
+    <h2>Try the demo</h2>
+    <p>The canvas starts locked. Get a demo token, then unlock to see the canvas view with a visible code.</p>
+
+    <div class="token-row">
+      <input type="text" id="tokenInput" placeholder="Paste or type token" autocomplete="off" aria-label="Demo token">
+      <button type="button" id="btnGetToken" class="primary">Get demo token</button>
+      <button type="button" id="btnUnlock">Unlock canvas view</button>
+    </div>
+    <div id="status" class="status info" role="status">Waiting for token…</div>
+
+    <div id="canvasWrap">
+      <canvas id="viewer" width="640" height="360" role="img" aria-label="Protected content demonstration canvas. Shows a simple graphic and a visible code when unlocked."></canvas>
+    </div>
+    <p class="small">This is a demonstration using drawn shapes, not a real photograph. Right-click is blocked on the canvas.</p>
+  </section>
+
+  <section class="card">
+    <h2>For independent creators</h2>
+    <p>The aim of the free basic version is to give people who cannot afford expensive tools a simple way to make casual copying a bit harder and to leave a visible mark they can refer to if a copy appears elsewhere.</p>
+    <p>Feedback is welcome. This is an early test, not a finished product.</p>
+  </section>
+</main>
+
+<footer>
+  Dazzle Security early test · Free basic version · Collects nothing · MIT licence<br>
+  Not legal protection. Screenshots and direct downloads remain possible.
+</footer>
+
+<script>
+(function () {
+  const canvas = document.getElementById('viewer');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const statusEl = document.getElementById('status');
+  const tokenInput = document.getElementById('tokenInput');
+  let currentToken = null;
+  let watermarkCode = '';
+
+  function setStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status ' + type;
+  }
+
+  function generateToken() {
+    const arr = new Uint8Array(8);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+
+  function generateWatermark() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = 'DS-';
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  function drawProtected() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    g.addColorStop(0, '#1a3a5c');
+    g.addColorStop(1, '#0d4d3a');
+    ctx.fillStyle = g;
+    ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
+
+    ctx.fillStyle = '#00d4aa';
+    ctx.beginPath();
+    ctx.arc(320, 160, 50, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Canvas view', 320, 240);
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('(demo — shapes only)', 320, 268);
+
+    watermarkCode = generateWatermark();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '14px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(watermarkCode, canvas.width - 20, canvas.height - 16);
+  }
+
+  function drawLocked() {
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Token required', canvas.width / 2, canvas.height / 2 - 10);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('No content drawn', canvas.width / 2, canvas.height / 2 + 16);
+  }
+
+  function unlock() {
+    const entered = tokenInput.value.trim().toUpperCase();
+    if (entered && entered === currentToken) {
+      drawProtected();
+      setStatus('Unlocked. Visible code on canvas: ' + watermarkCode + ' (not saved anywhere).', 'ok');
+    } else {
+      drawLocked();
+      setStatus('Invalid or missing token. Canvas stays dark.', 'bad');
+    }
+  }
+
+  document.getElementById('btnGetToken').addEventListener('click', () => {
+    currentToken = generateToken();
+    tokenInput.value = currentToken;
+    setStatus('Demo token generated (this tab only). Click Unlock.', 'info');
+    drawLocked();
+  });
+
+  document.getElementById('btnUnlock').addEventListener('click', unlock);
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('dragstart', e => e.preventDefault());
+
+  drawLocked();
+})();
+</script>
+</body>
+</html>
